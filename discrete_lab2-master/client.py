@@ -37,14 +37,14 @@ class Client:
             self.e =random.randint(3, self.phi_n-1)
 
         self.d = self.mod_inverse(self.e, self.phi_n) # secret key "d"
-
         # exchange public keys
         public_key = f"{self.n},{self.e}"  # Sending n and e as a public key
         self.s.send(public_key.encode())
 
         # receive the encrypted secret key
-        server_public_key = self.s.recv(1024).decode()
-        print(f"Received server public key: {server_public_key}")
+        self.server_public_key = self.s.recv(1024).decode()
+        self.server_n, self.server_e = map(int, self.server_public_key.split(","))
+        print(f"Received server public key as (n, e): ({self.server_public_key})")
 
         message_handler = threading.Thread(target=self.read_handler,args=())
         message_handler.start()
@@ -57,8 +57,10 @@ class Client:
             message = self.s.recv(1024).decode()
 
             # decrypt message with the secrete key
+            print(f"Given numbers: {message}")
             encrypted_numbers = list(map(int, message.split(",")))
             message_encoded = [pow(ch, self.d, self.n) for ch in encrypted_numbers]
+            print(f"Decrypted numbers: {message_encoded}")
             message = "".join(chr(ch) for ch in message_encoded)
 
             print(message)
@@ -72,7 +74,7 @@ class Client:
             message_encoded = [ord(ch) for ch in message]
 
             # (m^e)modn = c
-            ciphered_text = [pow(ch, self.e, self.n) for ch in message_encoded]
+            ciphered_text = [pow(ch, self.server_e, self.server_n) for ch in message_encoded]
             encrypted_message = ",".join(map(str, ciphered_text))
 
             self.s.send(encrypted_message.encode())
@@ -105,5 +107,5 @@ class Client:
         raise ValueError("gcd(e, d) is not 1")
 
 if __name__ == "__main__":
-    cl = Client("127.0.0.1", 9001, "yaropolk 1")
+    cl = Client("127.0.0.1", 9001, "nnn")
     cl.init_connection()

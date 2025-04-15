@@ -79,6 +79,7 @@ class Server:
 
     def handle_client(self, c: socket, addr):
         while True:
+            user_getter = None
             msg = c.recv(1024)
             new_msg = msg.decode()
             encrypted_numbers = list(map(int, new_msg.split(",")))
@@ -87,13 +88,23 @@ class Server:
 
 
             message = "".join(chr(ch) for ch in message_encoded)
+
+
             match = re.search(r'@\w+', message)
             if match:
                 user_getter = match.group(0)
+                message_to_send = message[match.end():].lstrip() 
 
             for client in self.clients:
                 if self.username_lookup[client] == user_getter[1:]:
-                    client.send(msg)
+
+                    pub_key = self.public_keys[client]
+                    n, e = map(int, pub_key.split(","))
+
+                    message_encoded_for_user = [ord(ch) for ch in message_to_send]
+                    user_msg_encoded = [pow(ch, e, n) for ch in message_encoded_for_user]
+                    user_encrypted_message = ",".join(map(str, user_msg_encoded))
+                    client.send(user_encrypted_message.encode())
 
 
     @staticmethod

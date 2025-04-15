@@ -105,6 +105,7 @@ class Client:
     @staticmethod
     def mod_inverse(e, phi) -> int:
         """Finds an inversed num to e with module phi"""
+        print(f'e: {e}')
         for d in range(3, phi):
             if (d*e)%phi == 1:
                 return d

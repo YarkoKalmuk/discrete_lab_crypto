@@ -1,19 +1,23 @@
+"""module for clients"""
 import socket
 import threading
 import random
 import math
 
 class Client:
+    """Clients info"""
     def __init__(self, server_ip: str, port: int, username: str) -> None:
         self.server_ip = server_ip
         self.port = port
         self.username = username
-        self.p = None
-        self.q = None
+        self.__p = None
+        self.__q = None
         self.n = None
         self.e = None
-        self.phi_n = None
-        self.d = None
+        self.__phi_n = None
+        self.__d = None
+        self.server_e = None
+        self.server_n = None
 
     def init_connection(self):
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -26,25 +30,15 @@ class Client:
         self.s.send(self.username.encode())
 
         # create key pairs
-        self.p, self.q = self.generate_prime(1000, 5000), self.generate_prime(1000, 5000) # private p, q
-        while self.p==self.q:
-            self.q = self.generate_prime(1000, 5000)
+        self.create_keys()
 
-        self.n = self.p * self.q # public key "n"
-        self.phi_n = (self.p-1)*(self.q-1)
-        self.e =random.randint(3, self.phi_n-1) # public key "e"
-        while math.gcd(self.e, self.phi_n) !=1 :
-            self.e =random.randint(3, self.phi_n-1)
-
-        self.d = self.mod_inverse(self.e, self.phi_n) # secret key "d"
         # exchange public keys
         public_key = f"{self.n},{self.e}"  # Sending n and e as a public key
         self.s.send(public_key.encode())
 
         # receive the encrypted secret key
-        self.server_public_key = self.s.recv(1024).decode()
-        self.server_n, self.server_e = map(int, self.server_public_key.split(","))
-        print(f"Received server public key as (n, e): ({self.server_public_key})")
+        server_public_key = self.s.recv(1024).decode()
+        self.server_n, self.server_e = map(int, server_public_key.split(","))
 
         message_handler = threading.Thread(target=self.read_handler,args=())
         message_handler.start()
@@ -52,33 +46,28 @@ class Client:
         input_handler.start()
 
     def read_handler(self):
-        """Reads encryptde message"""
+        """Reads an encrypted message"""
         while True:
             message = self.s.recv(1024).decode()
 
-            # decrypt message with the secrete key
+            # decrypt the message with the secrete key
 
             encrypted_numbers = list(map(int, message.split(",")))
-            message_encoded = [pow(ch, self.d, self.n) for ch in encrypted_numbers]
-            for ch in encrypted_numbers:
-                print(f'ch: {ch}')
-                print(f'd: {self.d}')
-                print(f'n: {self.n}')
-                print(f'pow: {pow(ch, self.d, self.n)}')
-            message = "".join(chr(ch) for ch in message_encoded)
+            decoded_nums = [pow(n, self.__d, self.n) for n in encrypted_numbers]
+            decoded_message = "".join(chr(ch) for ch in decoded_nums)
 
-            print(message)
+            print(decoded_message)
 
     def write_handler(self):
         """Writes a message and encrypts it"""
         while True:
             message = input()
 
-            # encrypt message with the secrete key
+            # encrypt message with the server secrete key
             message_encoded = [ord(ch) for ch in message]
 
             # (m^e)modn = c
-            ciphered_text = [pow(ch, self.server_e, self.server_n) for ch in message_encoded]
+            ciphered_text = [pow(n, self.server_e, self.server_n) for n in message_encoded]
             encrypted_message = ",".join(map(str, ciphered_text))
 
             self.s.send(encrypted_message.encode())
@@ -105,12 +94,28 @@ class Client:
     @staticmethod
     def mod_inverse(e, phi) -> int:
         """Finds an inversed num to e with module phi"""
-        print(f'e: {e}')
         for d in range(3, phi):
             if (d*e)%phi == 1:
                 return d
         raise ValueError("gcd(e, d) is not 1")
 
+    def create_keys(self):
+        """Creates public and private key for a client"""
+        # private p, q
+        self.__p = self.generate_prime(1000, 5000)
+        self.__q = self.generate_prime(1000, 5000)
+        while self.__p==self.__q:
+            self.__q = self.generate_prime(1000, 5000)
+
+        self.n = self.__p * self.__q # public key "n"
+        self.__phi_n = (self.__p-1)*(self.__q-1)
+        self.e =random.randint(3, self.__phi_n-1) # public key "e"
+        while math.gcd(self.e, self.__phi_n) !=1 :
+            self.e =random.randint(3, self.__phi_n-1)
+
+        self.__d = self.mod_inverse(self.e, self.__phi_n) # secret key "d"
+
+
 if __name__ == "__main__":
-    cl = Client("127.0.0.1", 9001, "gay")
+    cl = Client("127.0.0.1", 9001, "ustym_2")
     cl.init_connection()

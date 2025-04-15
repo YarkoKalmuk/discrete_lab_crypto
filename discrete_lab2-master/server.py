@@ -1,3 +1,4 @@
+"""module for a server"""
 import socket
 import threading
 import random
@@ -5,6 +6,7 @@ import math
 import re
 
 class Server:
+    """Server"""
 
     def __init__(self, port: int) -> None:
         self.host = '127.0.0.1'
@@ -14,23 +16,19 @@ class Server:
         self.s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
         self.public_keys = {}
         self.server_private_key = None
+        self.__p = None
+        self.__q = None
+        self.__phi_n = None
         self.n = None
-        self.d = None
+        self.e = None
+        self.__d = None
+
     def start(self):
         self.s.bind((self.host, self.port))
         self.s.listen(100)
 
         # generate keys ...
-        server_p, server_q = self.generate_prime(1000, 5000), self.generate_prime(1000, 5000)
-        server_n = server_p * server_q
-        server_phi_n = (server_p - 1) * (server_q - 1)
-        server_e = random.randint(3, server_phi_n - 1)
-        while math.gcd(server_e, server_phi_n) != 1:
-            server_e = random.randint(3, server_phi_n - 1)
-        server_public_key = f"{server_n},{server_e}"
-        self.n = server_n
-        self.d = self.mod_inverse(server_e, server_phi_n)
-
+        self.create_keys()
 
 
         while True:
@@ -43,13 +41,14 @@ class Server:
 
             # receive client`s public key
             client_public_key = c.recv(1024).decode()
-            print(f"Received client public key: {client_public_key}")
             self.public_keys[c] = client_public_key
 
-            # print(self.clients, self.public_keys)
             # send public key to the client
+            server_public_key = f"{self.n},{self.e}"
             c.send(server_public_key.encode())
 
+
+            print(f"{username} has succesfully connected")
             # ...
 
             # encrypt the secret with the clients public key
@@ -63,48 +62,55 @@ class Server:
             threading.Thread(target=self.handle_client,args=(c,addr,)).start()
 
     def broadcast(self, msg: str):
+        """Sends a message to all clients"""
         for client in self.clients:
 
             # encrypt the message
 
-            # Отримати публічний ключ клієнта
+            # Get the client`s public key
             pub_key = self.public_keys[client]
-            n, e = map(int, pub_key.split(","))
+            client_n, client_e = map(int, pub_key.split(","))
 
-            # Зашифрувати повідомлення для цього клієнта
-            encrypted_msg = [pow(ord(ch), e, n) for ch in msg]
+            # Encrypt the message for the client
+            encrypted_msg = [pow(ord(ch), client_e, client_n) for ch in msg]
 
             # Перетворити у байти і надіслати
             client.send(",".join(map(str, encrypted_msg)).encode())
 
     def handle_client(self, c: socket, addr):
+        """Handles a wanted client"""
         while True:
+            sender_name = self.username_lookup[c]
+
             user_getter = None
             msg = c.recv(1024)
             new_msg = msg.decode()
+
+            # decrypt the message with the server`s keys
             encrypted_numbers = list(map(int, new_msg.split(",")))
-            message_encoded = [pow(ch, self.d, self.n) for ch in encrypted_numbers]
-
-
-
+            message_encoded = [pow(n, self.__d, self.n) for n in encrypted_numbers]
             message = "".join(chr(ch) for ch in message_encoded)
-
-
-            match = re.search(r'@\w+', message)
+            # look to whom is this message for
+            match = re.search(r'@\w+:', message)
             if match:
-                user_getter = match.group(0)
-                message_to_send = message[match.end():].lstrip() 
+                user_getter = match.group(0)[:-1]
+                message_to_send = message[match.end():].lstrip()
+                message_to_send = f"From @{sender_name}: "+message_to_send
+
+            else:
+                raise ValueError("Please, correctly type the name of \
+the person you want to send a message to")
 
             for client in self.clients:
                 if self.username_lookup[client] == user_getter[1:]:
-
+                    # get the wanted client`s keys
                     pub_key = self.public_keys[client]
-                    n, e = map(int, pub_key.split(","))
+                    client_n, client_e = map(int, pub_key.split(","))
 
-                    message_encoded_for_user = [ord(ch) for ch in message_to_send]
-                    user_msg_encoded = [pow(ch, e, n) for ch in message_encoded_for_user]
-                    user_encrypted_message = ",".join(map(str, user_msg_encoded))
-                    client.send(user_encrypted_message.encode())
+                    msg_for_user_nums = [ord(ch) for ch in message_to_send]
+                    user_msg_encoded = [pow(n, client_e, client_n) for n in msg_for_user_nums]
+                    full_user_encoded_msg = ",".join(map(str, user_msg_encoded))
+                    client.send(full_user_encoded_msg.encode())
 
 
     @staticmethod
@@ -137,6 +143,21 @@ class Server:
                 return d
         raise ValueError("gcd(e, d) is not 1")
 
+    def create_keys(self):
+        """Creates public and private key for a server"""
+        # private p, q
+        self.__p = self.generate_prime(1000, 5000)
+        self.__q = self.generate_prime(1000, 5000)
+        while self.__p==self.__q:
+            self.__q = self.generate_prime(1000, 5000)
+
+        self.n = self.__p * self.__q # public key "n"
+        self.__phi_n = (self.__p-1)*(self.__q-1)
+        self.e =random.randint(3, self.__phi_n-1) # public key "e"
+        while math.gcd(self.e, self.__phi_n) !=1 :
+            self.e =random.randint(3, self.__phi_n-1)
+
+        self.__d = self.mod_inverse(self.e, self.__phi_n) # secret key "d"
 
 
 if __name__ == "__main__":

@@ -2,6 +2,8 @@ import socket
 import threading
 import random
 import math
+import re
+
 class Server:
 
     def __init__(self, port: int) -> None:
@@ -11,7 +13,9 @@ class Server:
         self.username_lookup = {}
         self.s = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
         self.public_keys = {}
-
+        self.server_private_key = None
+        self.n = None
+        self.d = None
     def start(self):
         self.s.bind((self.host, self.port))
         self.s.listen(100)
@@ -24,6 +28,9 @@ class Server:
         while math.gcd(server_e, server_phi_n) != 1:
             server_e = random.randint(3, server_phi_n - 1)
         server_public_key = f"{server_n},{server_e}"
+        self.n = server_n
+        self.d = self.mod_inverse(server_e, server_phi_n)
+
 
 
         while True:
@@ -73,9 +80,19 @@ class Server:
     def handle_client(self, c: socket, addr):
         while True:
             msg = c.recv(1024)
+            new_msg = msg.decode()
+            encrypted_numbers = list(map(int, new_msg.split(",")))
+            message_encoded = [pow(ch, self.d, self.n) for ch in encrypted_numbers]
+
+
+
+            message = "".join(chr(ch) for ch in message_encoded)
+            match = re.search(r'@\w+', message)
+            if match:
+                user_getter = match.group(0)
 
             for client in self.clients:
-                if client != c:
+                if self.username_lookup[client] == user_getter[1:]:
                     client.send(msg)
 
 

@@ -57,10 +57,14 @@ class Client:
             message = self.s.recv(1024).decode()
 
             # decrypt message with the secrete key
-            print(f"Given numbers: {message}")
+
             encrypted_numbers = list(map(int, message.split(",")))
             message_encoded = [pow(ch, self.d, self.n) for ch in encrypted_numbers]
-            print(f"Decrypted numbers: {message_encoded}")
+            for ch in encrypted_numbers:
+                print(f'ch: {ch}')
+                print(f'd: {self.d}')
+                print(f'n: {self.n}')
+                print(f'pow: {pow(ch, self.d, self.n)}')
             message = "".join(chr(ch) for ch in message_encoded)
 
             print(message)
@@ -107,5 +111,5 @@ class Client:
         raise ValueError("gcd(e, d) is not 1")
 
 if __name__ == "__main__":
-    cl = Client("127.0.0.1", 9001, "nnn")
+    cl = Client("127.0.0.1", 9001, "gay")
     cl.init_connection()

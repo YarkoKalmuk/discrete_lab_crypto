@@ -4,7 +4,7 @@ import threading
 import random
 import math
 import re
-
+import hashlib
 class Server:
     """Server"""
 
@@ -86,10 +86,24 @@ class Server:
             msg = c.recv(1024)
             new_msg = msg.decode()
 
+            # check if there is a hash in a message
+            try:
+                received_hash, encrypted_part = new_msg.split("|", 1)
+            except ValueError:
+                print("Please, calculate the hash of a message and send it as "\
+                      "'hash|encrypted_message'")
+                continue
+
             # decrypt the message with the server`s keys
-            encrypted_numbers = list(map(int, new_msg.split(",")))
+            encrypted_numbers = list(map(int, encrypted_part.split(",")))
             message_encoded = [pow(n, self.__d, self.n) for n in encrypted_numbers]
             message = "".join(chr(ch) for ch in message_encoded)
+
+            # check if hash is the same
+            new_hash = hashlib.sha256(message.encode()).hexdigest()
+            if new_hash != received_hash:
+                raise ValueError("Hashes of the same message are not the same!")
+
             # look to whom is this message for
             match = re.search(r'@\w+:', message)
             if match:

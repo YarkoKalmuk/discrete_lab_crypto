@@ -3,6 +3,7 @@ import socket
 import threading
 import random
 import math
+import hashlib
 
 class Client:
     """Clients info"""
@@ -63,6 +64,9 @@ class Client:
         while True:
             message = input()
 
+            # calculate the hash of a message
+            message_hash = hashlib.sha256(message.encode()).hexdigest()
+
             # encrypt message with the server secrete key
             message_encoded = [ord(ch) for ch in message]
 
@@ -70,7 +74,8 @@ class Client:
             ciphered_text = [pow(n, self.server_e, self.server_n) for n in message_encoded]
             encrypted_message = ",".join(map(str, ciphered_text))
 
-            self.s.send(encrypted_message.encode())
+            full_message = f"{message_hash}|{encrypted_message}"
+            self.s.send(full_message.encode())
 
     @staticmethod
     def is_prime(number) -> bool:
@@ -117,5 +122,5 @@ class Client:
 
 
 if __name__ == "__main__":
-    cl = Client("127.0.0.1", 9001, "ustym_2")
+    cl = Client("127.0.0.1", 9001, "maksym")
     cl.init_connection()

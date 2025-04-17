@@ -132,5 +132,5 @@ class Client:
         self.block_size = len(str(self.n)) - 1
 
 if __name__ == "__main__":
-    cl = Client("127.0.0.1", 9001, "alice")
+    cl = Client("127.0.0.1", 9001, "nigga")
     cl.init_connection()

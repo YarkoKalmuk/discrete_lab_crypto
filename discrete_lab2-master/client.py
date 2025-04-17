@@ -42,8 +42,7 @@ class Client:
         self.server_n, self.server_e = map(int, server_public_key.split(","))
 
         # determine encrypted block length based on server_n
-        self.encrypted_block_length = len(str(pow(10, len(str(self.server_n)) - 1, self.server_n)))
-        self.block_size = len(str(self.server_n)) - 1
+        self.server_block_size = len(str(self.server_n)) - 1
 
         message_handler = threading.Thread(target=self.read_handler,args=())
         message_handler.start()
@@ -55,12 +54,19 @@ class Client:
         while True:
 
             message = self.s.recv(1024).decode()
-            print(f"Decoding: {message}")
-            encrypted_blocks = [message[i:i+self.encrypted_block_length] for i in range(0, len(message), self.encrypted_block_length)]
-            decrypted_blocks = [str(pow(int(block), self.__d, self.n)).zfill(self.block_size) for block in encrypted_blocks]
-            numeric_string = "".join(decrypted_blocks)
+            received_hash, message, last_block_len = message.split("|")
+            encrypted_blocks = [message[i:i+self.block_size+1] for i in range(0, len(message), self.block_size+1)]
+            decrypted_blocks = [str(pow(int(block), self.__d, self.n)) for block in encrypted_blocks]
+            decrypted_filled_blocks = [block.zfill(self.block_size) if i != len(encrypted_blocks)-1 else block.zfill(int(last_block_len))
+                                for i, block in enumerate(decrypted_blocks)]
+            numeric_string = "".join(decrypted_filled_blocks)
 
             decoded_message = "".join(chr(int(numeric_string[i:i+3])) for i in range(0, len(numeric_string), 3))
+
+            new_hash = hashlib.sha256(decoded_message.encode()).hexdigest()
+            if new_hash != received_hash:
+                raise ValueError("Hashes of the same message are not the same!")
+
             print(decoded_message)
 
     def write_handler(self):
@@ -70,47 +76,15 @@ class Client:
             message_hash = hashlib.sha256(message.encode()).hexdigest()
 
             numeric_string = ''.join(f"{ord(c):03d}" for c in message)
-            max_digits = self.block_size
 
-            blocks = [numeric_string[i:i+max_digits] for i in range(0, len(numeric_string), max_digits)]
-            encrypted_blocks = [str(pow(int(block), self.server_e, self.server_n)).zfill(self.encrypted_block_length) for block in blocks]
+            blocks = [numeric_string[i:i+self.server_block_size]
+                      for i in range(0, len(numeric_string), self.server_block_size)]
+            last_block_len = len(blocks[-1])
+            encrypted_blocks = [str(pow(int(block), self.server_e, self.server_n)).zfill(self.server_block_size+1) for block in blocks]
 
             encrypted_message = "".join(encrypted_blocks)
-            full_message = f"{message_hash}|{encrypted_message}"
-            print(f"Sending: {full_message}")
+            full_message = f"{message_hash}|{encrypted_message}|{last_block_len}"
             self.s.send(full_message.encode())
-
-    # def read_handler(self):
-    #     """Reads an encrypted message"""
-    #     while True:
-    #         message = self.s.recv(1024).decode()
-
-    #         # decrypt the message with the secrete key
-
-    #         encrypted_numbers = list(map(int, message.split(",")))
-    #         decoded_nums = [pow(n, self.__d, self.n) for n in encrypted_numbers]
-    #         decoded_message = "".join(chr(ch) for ch in decoded_nums)
-
-    #         print(decoded_message)
-
-
-    # def write_handler(self):
-    #     """Writes a message and encrypts it"""
-    #     while True:
-    #         message = input()
-
-    #         # calculate the hash of a message
-    #         message_hash = hashlib.sha256(message.encode()).hexdigest()
-
-    #         # encrypt message with the server secrete key
-    #         message_encoded = [ord(ch) for ch in message]
-
-    #         # (m^e)modn = c
-    #         ciphered_text = [pow(n, self.server_e, self.server_n) for n in message_encoded]
-    #         encrypted_message = ",".join(map(str, ciphered_text))
-
-    #         full_message = f"{message_hash}|{encrypted_message}"
-    #         self.s.send(full_message.encode())
 
     @staticmethod
     def is_prime(number) -> bool:
@@ -154,8 +128,9 @@ class Client:
             self.e =random.randint(3, self.__phi_n-1)
 
         self.__d = self.mod_inverse(self.e, self.__phi_n) # secret key "d"
-
+        # clients block size
+        self.block_size = len(str(self.n)) - 1
 
 if __name__ == "__main__":
-    cl = Client("127.0.0.1", 9001, "abcdefg_1_2_3")
+    cl = Client("127.0.0.1", 9001, "alice")
     cl.init_connection()

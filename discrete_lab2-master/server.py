@@ -47,19 +47,34 @@ class Server:
             server_public_key = f"{self.n},{self.e}"
             c.send(server_public_key.encode())
 
-
             print(f"{username} has succesfully connected")
-            # ...
-
-            # encrypt the secret with the clients public key
-
-            # ...
-
-            # send the encrypted secret to a client
-
-            # ...
 
             threading.Thread(target=self.handle_client,args=(c,addr,)).start()
+
+
+    def decode_message(self, encrypted_part, last_block_len):
+        """Decodes a message using block rsa"""
+        encrypted_blocks = [encrypted_part[i:i+self.block_size+1] for i in range(0, len(encrypted_part), self.block_size+1)]
+        decrypted_blocks = [str(pow(int(block), self.__d, self.n)) for block in encrypted_blocks]
+        decrypted_filled_blocks = [block.zfill(self.block_size) if i != len(encrypted_blocks)-1 else block.zfill(int(last_block_len))
+                            for i, block in enumerate(decrypted_blocks)]
+        numeric_string = "".join(decrypted_filled_blocks)
+        decoded_message = "".join(chr(int(numeric_string[i:i+3])) for i in range(0, len(numeric_string), 3))
+        return decoded_message
+
+    def encode_message(self, message, client_n, client_e):
+        """Encodes a message using block rsa"""
+        client_block_size = len(str(client_n))-1
+        numeric_string = ''.join(f"{ord(c):03d}" for c in message)
+
+        blocks = [numeric_string[i:i+client_block_size] for i in range(0, len(numeric_string), client_block_size)]
+        last_block_size = len(blocks[-1])
+        encrypted_blocks = [str(pow(int(block), client_e, client_n)).zfill(client_block_size+1) for block in blocks]
+
+        encrypted_message = "".join(encrypted_blocks)
+        full_message = f"{encrypted_message}|{last_block_size}"
+        return full_message
+
 
     def broadcast(self, msg: str):
         """Sends a message to all clients"""
@@ -67,60 +82,32 @@ class Server:
 
             # encrypt the message
 
-            # # Get the client`s public key
-            # pub_key = self.public_keys[client]
-            # client_n, client_e = map(int, pub_key.split(","))
-
             pub_key = self.public_keys[client]
             client_n, client_e = map(int, pub_key.split(","))
+            encoded_message = self.encode_message(msg, client_n, client_e)
 
-            print(f"Client n, e: {client_n, client_e}")
-            numeric_string = ''.join(f"{ord(c):03d}" for c in msg)
-            print(f"Numeric string: {numeric_string}")
-            max_digits = self.block_size
-
-            blocks = [numeric_string[i:i+max_digits] for i in range(0, len(numeric_string), max_digits)]
-            encrypted_blocks = [str(pow(int(block), client_e, client_n)).zfill(self.encrypted_block_length) for block in blocks]
-
-            encrypted_message = "".join(encrypted_blocks)
-            print(f"Sending: {encrypted_message}")
-            client.send(encrypted_message.encode())
-
-            # # Encrypt the message for the client
-            # encrypted_msg = [pow(ord(ch), client_e, client_n) for ch in msg]
-
-            # # Перетворити у байти і надіслати
-            # client.send(",".join(map(str, encrypted_msg)).encode())
+            msg_hash = hashlib.sha256(msg.encode()).hexdigest()
+            full_message = f"{msg_hash}|{encoded_message}"
+            client.send(full_message.encode())
 
     def handle_client(self, c: socket, addr):
         """Handles a wanted client"""
         while True:
             sender_name = self.username_lookup[c]
-
             user_getter = None
             msg = c.recv(1024).decode()
 
             # check if there is a hash in a message
             try:
-                received_hash, encrypted_part = msg.split("|", 1)
+                received_hash, encrypted_part, last_block_len = msg.split("|")
             except ValueError:
                 print("Please, calculate the hash of a message and send it as "\
                       "'hash|encrypted_message'")
                 continue
-            print(f"Decoding: {encrypted_part}")
-            encrypted_blocks = [encrypted_part[i:i+self.encrypted_block_length] for i in range(0, len(encrypted_part), self.encrypted_block_length)]
-            decrypted_blocks = [str(pow(int(block), self.__d, self.n)).zfill(self.block_size) for block in encrypted_blocks]
-            numeric_string = "".join(decrypted_blocks)
 
-            decoded_message = "".join(chr(int(numeric_string[i:i+3])) for i in range(0, len(numeric_string), 3))
-            print(f"Got: {decoded_message}")
-            # print(decoded_message)
-            # # decrypt the message with the server`s keys
-            # encrypted_numbers = list(map(int, encrypted_part.split(",")))
-            # message_encoded = [pow(n, self.__d, self.n) for n in encrypted_numbers]
-            # message = "".join(chr(ch) for ch in message_encoded)
+            decoded_message = self.decode_message(encrypted_part, last_block_len)
 
-            # check if hash is the same
+            # check if hashes are the same
             new_hash = hashlib.sha256(decoded_message.encode()).hexdigest()
             if new_hash != received_hash:
                 raise ValueError("Hashes of the same message are not the same!")
@@ -140,74 +127,11 @@ the person you want to send a message to")
                     # get the wanted client`s keys
                     pub_key = self.public_keys[client]
                     client_n, client_e = map(int, pub_key.split(","))
+                    encoded_message = self.encode_message(message_to_send, client_n, client_e)
 
-                    numeric_string = ''.join(f"{ord(c):03d}" for c in message_to_send)
-                    max_digits = self.block_size
-
-                    blocks = [numeric_string[i:i+max_digits] for i in range(0, len(numeric_string), max_digits)]
-                    encrypted_blocks = [str(pow(int(block), client_e, client_n)).zfill(self.encrypted_block_length) for block in blocks]
-
-                    encrypted_message = "".join(encrypted_blocks)
-                    client.send(encrypted_message.encode())
-
-
-
-                    # # get the wanted client`s keys
-                    # pub_key = self.public_keys[client]
-                    # client_n, client_e = map(int, pub_key.split(","))
-
-                    # msg_for_user_nums = [ord(ch) for ch in message_to_send]
-                    # user_msg_encoded = [pow(n, client_e, client_n) for n in msg_for_user_nums]
-                    # full_user_encoded_msg = ",".join(map(str, user_msg_encoded))
-                    # client.send(full_user_encoded_msg.encode())
-
-#     def handle_client(self, c: socket, addr):
-#         """Handles a wanted client"""
-#         while True:
-#             sender_name = self.username_lookup[c]
-
-#             user_getter = None
-#             msg = c.recv(1024)
-#             new_msg = msg.decode()
-
-#             # check if there is a hash in a message
-#             try:
-#                 received_hash, encrypted_part = new_msg.split("|", 1)
-#             except ValueError:
-#                 print("Please, calculate the hash of a message and send it as "\
-#                       "'hash|encrypted_message'")
-#                 continue
-
-#             # decrypt the message with the server`s keys
-#             encrypted_numbers = list(map(int, encrypted_part.split(",")))
-#             message_encoded = [pow(n, self.__d, self.n) for n in encrypted_numbers]
-#             message = "".join(chr(ch) for ch in message_encoded)
-
-#             # check if hash is the same
-#             new_hash = hashlib.sha256(message.encode()).hexdigest()
-#             if new_hash != received_hash:
-#                 raise ValueError("Hashes of the same message are not the same!")
-
-#             # look to whom is this message for
-#             match = re.search(r'@\w+:', message)
-#             if match:
-#                 user_getter = match.group(0)[:-1]
-#                 message_to_send = message[match.end():].lstrip()
-#                 message_to_send = f"From @{sender_name}: "+message_to_send
-#             else:
-#                 raise ValueError("Please, correctly type the name of \
-# the person you want to send a message to")
-
-#             for client in self.clients:
-#                 if self.username_lookup[client] == user_getter[1:]:
-#                     # get the wanted client`s keys
-#                     pub_key = self.public_keys[client]
-#                     client_n, client_e = map(int, pub_key.split(","))
-
-#                     msg_for_user_nums = [ord(ch) for ch in message_to_send]
-#                     user_msg_encoded = [pow(n, client_e, client_n) for n in msg_for_user_nums]
-#                     full_user_encoded_msg = ",".join(map(str, user_msg_encoded))
-#                     client.send(full_user_encoded_msg.encode())
+                    msg_hash = hashlib.sha256(message_to_send.encode()).hexdigest()
+                    full_message = f"{msg_hash}|{encoded_message}"
+                    client.send(full_message.encode())
 
 
     @staticmethod
@@ -256,7 +180,6 @@ the person you want to send a message to")
 
         self.__d = self.mod_inverse(self.e, self.__phi_n) # secret key "d"
         # block size
-        self.encrypted_block_length = len(str(pow(10, len(str(self.n)) - 1, self.n)))
         self.block_size = len(str(self.n)) - 1
 
 if __name__ == "__main__":
